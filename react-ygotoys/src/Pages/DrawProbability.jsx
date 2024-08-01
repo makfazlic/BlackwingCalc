@@ -4,10 +4,18 @@ import Footer from '../Components/Footer'
 import Swal from 'sweetalert2'
 
 function factorial(n) {
-  if (n === 0 || n === 1) {
-      return 1;
+  let lookup = [1, 1, 2, 6, 24, 120, 720, 5040, 40320, 362880, 3628800, 39916800, 479001600]
+  if (n < 0) {
+    return -1;
   }
-  return n * factorial(n - 1);
+  if (n < lookup.length) {
+    return lookup[n];
+  }
+  let result = 1;
+  for (let i = 1; i <= n; i++) {
+    result *= i;
+  }
+  return result;
 }
 
 // Probability of pulling a normal monster from a deck of 40 cards
@@ -19,28 +27,25 @@ function hypergeometricDistribution(n, k, s, i) {
   return (binomCoeff(s, i) * binomCoeff(n - s, k - i)) / binomCoeff(n, k);
 }
 
-function multivariateHypergeometricDistribution(n, s, i, k) {
-  console.log("Deck size: " + n);
-  console.log("Number of cards drawn: " + k);
-  console.log("Number of successes: " + s);
-  console.log("Number of successes drawn: " + i);
-  if (s.length !== i.length) {
-      throw new Error("Arrays s and i must have the same length.");
-  }
-
+function multivariateHypergeometricDistribution(n, k, S, I) {
   let numerator = 1;
-  let denominator = binomCoeff(n, k);
-
-  for (let j = 0; j < s.length; j++) {
-      numerator *= binomCoeff(s[j], i[j]);
+  let cards_used = 0;
+  let draws_used = 0;
+  for (let i = 0; i < S.length; i++) {
+    numerator *= binomCoeff(S[i], I[i]);
+    cards_used += S[i];
+    draws_used += I[i];
   }
+  numerator *= binomCoeff(n - cards_used, k - draws_used);
+  let denominator = binomCoeff(n, k);
+  console.log("Numerator: ", numerator);
+  console.log("Denominator: ", denominator);
+  console.log("Probability: ", numerator / denominator);
+  console.log("Cards used: ", cards_used);
+  console.log("Draws used: ", draws_used);
 
-  console.log("Numerator: " + numerator);
-  console.log("Denominator: " + denominator);
-  console.log("Probability: " + numerator / denominator);
   return numerator / denominator;
 }
-
 
 var colorArray = ['#FF6633', '#FFB399', '#FF33FF', '#FFFF99', '#00B3E6', 
   '#E6B333', '#3366E6', '#999966', '#99FF99', '#B34D4D',
@@ -72,27 +77,16 @@ var colorArray = ['#FF6633', '#FFB399', '#FF33FF', '#FFFF99', '#00B3E6',
 export default function DrawProbability() {
 
     const canvasRef = useRef(null);
-    // state for deck size 
     const [deckSize, setDeckSize] = useState(40);
-    // state for number of cards drawn
     const [numDrawn, setNumDrawn] = useState(5);
-    // Cards in added to deck
-    const [inputs, setInputs] = useState(1);
-
-    // ADDED CARDS TO DECK
     const [cards, setCards] = useState([]);
-    // Card name
     const [cardName, setCardName] = useState('');
-    // Number of copies
     const [copies, setCopies] = useState(3);
-    // Minimum in opening
     const [min, setMin] = useState(1);
-    // Maximum in opening
     const [max, setMax] = useState(3);
 
     function individualProb(card) {
       let probs = [];
-      console.log(card);
       let n = deckSize
       let k = numDrawn
       let s = card.copies
@@ -123,26 +117,62 @@ export default function DrawProbability() {
       ));
     }
 
+    function cartesianProduct(arrays) {
+      if (arrays.length === 0) return [[]];
+  
+      const firstArray = arrays[0];
+      const remainingArrays = arrays.slice(1);
+      const remainingCombinations = cartesianProduct(remainingArrays);
+      
+      const combinations = [];
+  
+      firstArray.forEach(value => {
+          remainingCombinations.forEach(combination => {
+              combinations.push([value, ...combination]);
+          });
+      });
+  
+      return combinations;
+  }
+
     function totalProb() {
-      if (cards.length > 1) {
-        console.log("Calculating total probability...");
-        let probs = [];
-        let n = deckSize
-        let k = numDrawn
-        let copies = []
-        let mins = []
-        cards.forEach((card) => {
-          copies.push(card.copies);
-          mins.push(card.min);
-        });
-        let final = multivariateHypergeometricDistribution(n, copies, mins, k)*100;
-        return final.toFixed(2);
-      } else {
+      if (cards.length < 2) {
         return 0;
       }
+      let n = deckSize
+      let k = numDrawn
+      let S = cards.map((card) => parseInt(card.copies));
+      let I = cards.map((card) => parseInt(card.min));
+      let J = cards.map((card) => parseInt(card.max));
+      console.log("N: ", n);
+      console.log("K: ", k);
+      console.log("S: ", S);
+      console.log("I: ", I);
+      console.log("J: ", J);
+
+      // for each card
+      let combs = [];
+      for (let i = 0; i < S.length; i++) {
+        // from min to max
+        let temp = [];
+        for (let j = I[i]; j <= J[i]; j++) {
+          temp.push(j);
+        }
+        combs.push(temp);
+      }
+      console.log("Combs: ", combs);
+      let combinations = cartesianProduct(combs);
+      let sum = 0;
+      console.log("Combinations: ", combinations);
+      combinations.forEach((combination) => {
+        console.log(n, k, S, combination);
+        sum += multivariateHypergeometricDistribution(n, k, S, combination);
+      });
+      return (sum*100).toFixed(2);
     }
 
 
+    // Use effect for drawing rectangles
     useEffect(() => {
       const canvas = canvasRef.current;
       const ctx = canvas.getContext('2d');
@@ -260,7 +290,10 @@ export default function DrawProbability() {
   return (
     <main className="flex flex-col min-h-screen justify-between items-center">
       <Header />
-      <div className="w-full bg-gradient-to-r from-red-200 to-blue-200 p-6 flex flex-row justify-center items-start space-x-4">
+      <div className="w-full flex-grow bg-gradient-to-r from-red-200 to-blue-200 p-6 flex flex-row justify-center items-start space-x-4">
+        
+
+        {/* Left side */}
         <div className="bg-white rounded-lg shadow-lg p-6 flex flex-col items-center space-y-4 flex-1">
           <h3 className="text-2xl font-semibold mb-2">Probability Calculator</h3>
           <p className="mb-4 text-center w-full">
@@ -366,6 +399,9 @@ export default function DrawProbability() {
             >Add Card</button>
             </div>  
         </div>
+
+
+        {/* Right side */}
         <div className="flex flex-col space-y-4 w-full justify-center items-center flex-1">
               <h3 className="text-2xl font-semibold mb-2 mt-6">Results 🚀</h3>
               <canvas ref={canvasRef} className='w-full' />
@@ -394,12 +430,14 @@ export default function DrawProbability() {
               </ul>
 
                 <div className="flex flex-row justify-between items-center rounded-lg px-5 py-2 w-full bg-white text-black">
-                <h3 className="text-2xl font-semibold">TOTAL <span className='text-sm font-normal'>(min of each)</span></h3>
+                <h3 className="text-2xl font-semibold">TOTAL <span className='text-sm font-normal'>(all possible combintations)</span></h3>
                 <h3 className="text-2xl">Probability: {totalProb()}%</h3>
                 
               </div>
         </div>
       </div>
+
+
       <Footer />
     </main>
   )
